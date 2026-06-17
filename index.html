@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>虚拟电厂聚合平台 · HA 版</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg-primary: #f5f7fa;
+  --bg-card: #ffffff;
+  --bg-input: #f0f2f5;
+  --text-primary: #1a2332;
+  --text-secondary: #6b7a8f;
+  --accent: #12b8ff;
+  --accent2: #34d399;
+  --accent3: #fbbf24;
+  --accent4: #a78bfa;
+  --accent5: #f472b6;
+  --border: #e2e8f0;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+  background:var(--bg-primary);color:var(--text-primary);min-height:100vh;line-height:1.6
+}
+.header{
+  background:linear-gradient(135deg,#0ea5e9,#3b82f6,#6366f1);
+  padding:20px 32px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1)
+}
+.header h1{font-size:22px;color:#fff;letter-spacing:.5px}
+.header h1 span{color:rgba(255,255,255,.7);font-weight:400}
+.header p{color:rgba(255,255,255,.75);font-size:13px;margin-top:2px}
+.tabs{
+  display:flex;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto;
+  position:sticky;top:68px;z-index:99;box-shadow:var(--shadow)
+}
+.tab-btn{
+  padding:14px 22px;background:none;border:none;color:var(--text-secondary);
+  font-size:14px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:6px
+}
+.tab-btn:hover{color:var(--text-primary);background:rgba(18,184,255,.05)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(18,184,255,.08)}
+.container{max-width:1200px;margin:0 auto;padding:16px}
+.tab-content{display:none}.tab-content.active{display:block}
+.card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;margin-bottom:16px;box-shadow:var(--shadow)
+}
+.card h2{font-size:16px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h3{font-size:14px;font-weight:600;margin-bottom:10px;color:var(--accent)}
+.card p{color:var(--text-secondary);font-size:13px;margin-bottom:8px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:860px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+.stat-card{
+  background:var(--bg-input);padding:16px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);text-align:center
+}
+.stat-card .value{font-size:26px;font-weight:700;color:var(--accent)}
+.stat-card .value.green{color:var(--accent2)}
+.stat-card .value.orange{color:var(--accent3)}
+.stat-card .value.purple{color:var(--accent4)}
+.stat-card .value.pink{color:var(--accent5)}
+.stat-card .label{font-size:11px;color:var(--text-secondary);margin-top:2px}
+.chart-box{position:relative;height:320px;width:100%;margin:8px 0}
+.chart-box-sm{position:relative;height:240px;width:100%}
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:40px;flex-direction:column}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top:3px solid var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:12px;font-weight:500;margin-bottom:4px;color:var(--text-secondary)}
+.form-group input,.form-group select{width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:13px;outline:none}
+.form-group input:focus{ border-color:var(--accent) }
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border:none;
+  border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s
+}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3bc8ff}
+.btn-success{background:var(--accent2);color:#fff}
+.btn-warning{background:var(--accent3);color:#1a2332}
+.alert{
+  padding:10px 14px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:12px
+}
+.alert-info{background:rgba(18,184,255,.1);border:1px solid rgba(18,184,255,.25);color:#0284c7}
+.alert-success{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:#059669}
+.alert-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:#b45309}
+.adjustable-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.adjustable-grid{grid-template-columns:1fr}}
+.adjustable-item{
+  background:var(--bg-input);border-radius:var(--radius-sm);padding:14px;
+  border:1px solid var(--border)
+}
+.adjustable-item .title{font-size:14px;font-weight:600;margin-bottom:6px}
+.adjustable-item .detail{font-size:12px;color:var(--text-secondary);line-height:1.8}
+.adjustable-item .tag{
+  display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;margin-right:4px
+}
+.tag-blue{background:rgba(18,184,255,.12);color:#0284c7}
+.tag-green{background:rgba(52,211,153,.12);color:#059669}
+.tag-orange{background:rgba(251,191,36,.12);color:#b45309}
+.tag-purple{background:rgba(167,139,250,.12);color:#7c3aed}
+.tag-pink{background:rgba(244,114,182,.12);color:#db2777}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--bg-input);color:var(--text-secondary);font-weight:500;padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:rgba(18,184,255,.03)}
+.row-flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ 虚拟电厂聚合平台 <span>· HA 版</span></h1>
+  <p id="subtitle">源宿酒店（万豪国际集团）| 模拟数据用于演示</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="overview">📊 总览监测</button>
+  <button class="tab-btn" data-tab="load">🔌 负荷分解</button>
+  <button class="tab-btn" data-tab="adjustable">📡 可调资源</button>
+  <button class="tab-btn" data-tab="profit">💰 分成计算</button>
+</div>
+
+<div class="container">
+
+<!-- ==================== 总览监测 ==================== -->
+<div class="tab-content active" id="tab-overview">
+  <div class="alert alert-info">
+    ⚠️ 当前为模拟数据，基于可研报告年用电量（600万度/年）反推生成，用于VPP平台展示。实际数据以HA实测为准。
+  </div>
+  <div class="grid-4" id="overview-stats"></div>
+  <div class="card">
+    <h2>📈 近7天总负荷曲线</h2>
+    <div class="chart-box"><canvas id="chart-total-7d"></canvas></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+      <div class="stat-card" style="flex:1;min-width:100px">
+        <div class="value green" id="today-peak">-</div>
+        <div class="label">今日峰值 (kW)</div>
+      </div>
+      <div class="stat-card" style="flex:1;min-width:100px">
+        <div class="value" id="today-avg">-</div>
+        <div class="label">今日平均 (kW)</div>
+      </div>
+      <div class="stat-card" style="flex:1;min-width:100px">
+        <div class="value purple" id="total-adjustable">-</div>
+        <div class="label">当前可调容量 (kW)</div>
+      </div>
+      <div class="stat-card" style="flex:1;min-width:100px">
+        <div class="value orange" id="total-kwh">-</div>
+        <div class="label">本日用电 (kWh)</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>🌞 光伏出力今日曲线</h2>
+    <div class="chart-box-sm"><canvas id="chart-pv-today"></canvas></div>
+  </div>
+</div>
+
+<!-- ==================== 负荷分解 ==================== -->
+<div class="tab-content" id="tab-load">
+  <div class="card">
+    <h2>📊 分项负荷堆叠图（今日）</h2>
+    <div class="chart-box"><canvas id="chart-stacked"></canvas></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2>🥧 年用电结构</h2>
+      <div class="chart-box-sm"><canvas id="chart-pie-annual"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>📋 分项统计</h2>
+      <div id="load-table"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 可调资源 ==================== -->
+<div class="tab-content" id="tab-adjustable">
+  <div class="card">
+    <h2>📡 5项可调负荷资源</h2>
+    <p style="margin-bottom:12px">当前模拟数据下各可调负荷的能力参数及实时状态</p>
+    <div class="adjustable-grid" id="adjustable-cards"></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2>📊 可调负荷24h功率曲线（今日）</h2>
+      <div class="chart-box"><canvas id="chart-adjustable-profiles"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>⚙️ 可调容量汇总</h2>
+      <div id="adjustable-summary"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 分成计算 ==================== -->
+<div class="tab-content" id="tab-profit">
+  <div class="card">
+    <h2>🧮 三方分成计算器</h2>
+    <div class="row-flex">
+      <div style="flex:1;min-width:280px">
+        <div class="form-group">
+          <label>响应电量（kWh）</label>
+          <input type="number" id="profit-kwh" value="1000" min="0">
+        </div>
+        <div class="form-group">
+          <label>响应单价（元/kWh）</label>
+          <input type="number" id="profit-price" value="2.5" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>收益类型</label>
+          <select id="profit-type">
+            <option value="demand">需求响应</option>
+            <option value="spot">现货价差套利</option>
+            <option value="ancillary">辅助服务</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>运营费率 (%)</label>
+          <input type="number" id="profit-oprate" value="6" min="0" max="20">
+        </div>
+        <div class="form-group">
+          <label>风险准备金率 (%)</label>
+          <input type="number" id="profit-risk" value="4" min="0" max="20">
+        </div>
+        <button class="btn btn-primary" onclick="calcProfit()">计算分成</button>
+      </div>
+      <div style="flex:1;min-width:300px">
+        <div class="chart-box-sm"><canvas id="chart-profit-pie"></canvas></div>
+        <div id="profit-result" style="margin-top:10px;font-size:14px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>📋 历史分成记录</h2>
+    <div id="profit-history-table"></div>
+  </div>
+  <div class="card">
+    <h2>📝 公式说明</h2>
+    <div id="profit-formula" style="font-size:13px;color:var(--text-secondary);line-height:1.8"></div>
+  </div>
+</div>
+
+</div><!-- container -->
+
+<script>
+// ===== 全局 =====
+let DATA = null;
+const COLORS = {ac:'#12b8ff', light:'#34d399', nio:'#fbbf24', cnpc:'#a78bfa', hp:'#f472b6', other:'#94a3b8', pv:'#fb923c'};
+const COLORS_ORDER = ['ac','light','nio','cnpc','other'];
+const LABELS = {ac:'水冷空调', light:'照明/插座/房间', nio:'蔚来换电站', cnpc:'中石油充电桩', hp:'空气源热泵', other:'其他负荷', pv:'光伏'};
+
+// tab切换
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('tab-'+this.dataset.tab).classList.add('active');
+    // 延迟渲染chart以防隐藏dom测不准宽高
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 100);
+  });
+});
+
+// ===== 数据加载 =====
+async function loadData(){
+  document.getElementById('subtitle').textContent = '源宿酒店（万豪国际集团）| ⏳ 加载数据中...';
+  try {
+    const resp = await fetch('./mock_data.json');
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    DATA = await resp.json();
+    renderAll();
+  } catch(e){
+    document.getElementById('subtitle').textContent = '源宿酒店（万豪国际集团）| ❌ 数据加载失败: '+e.message;
+    document.querySelector('.container').innerHTML = `
+      <div class="card"><div class="alert alert-warning">
+        ❌ 数据加载失败：${e.message}<br>
+        请确保 mock_data.json 文件存在且可访问。
+      </div></div>`;
+  }
+}
+
+// ===== 渲染函数 =====
+function renderAll(){
+  const total = DATA.load.total;
+  const meta = DATA.meta;
+  document.getElementById('subtitle').textContent =
+    meta.project + ' | 年用电'+ (meta.annual_total_kwh/10000)+'万度 · '+
+    total.length+'个数据点 · 15分钟粒度';
+  
+  renderOverviewStats(total);
+  renderTotalChart7d(total);
+  renderPvToday(DATA.load.pv);
+  renderStackedToday(total);
+  renderPieAnnual();
+  renderLoadTable(total);
+  renderAdjustableCards();
+  renderAdjustableProfiles(total);
+  renderAdjustableSummary();
+  renderProfitHistory();
+  renderFormula();
+  calcProfit(); // 默认计算一次
+}
+
+// ---- 总览统计 ----
+function renderOverviewStats(total){
+  const today = total.slice(-96);
+  const peak = Math.max(...today.map(d=>d.v));
+  const avg = today.reduce((s,d)=>s+d.v,0)/today.length;
+  const kwh = today.reduce((s,d)=>s+d.v,0)*0.25;
+  
+  // 可调容量：当前时间段的模拟值
+  const nowIdx = getCurrentSlot(total);
+  const cur = total[nowIdx] || total[total.length-1];
+  const adjCap = calcAdjustableNow(cur);
+  
+  document.getElementById('today-peak').textContent = peak.toFixed(0);
+  document.getElementById('today-avg').textContent = avg.toFixed(0);
+  document.getElementById('total-adjustable').textContent = adjCap.toFixed(0);
+  document.getElementById('total-kwh').textContent = kwh.toFixed(0);
+}
+
+function getCurrentSlot(total){
+  const now = new Date();
+  const todayStr = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  let best = 0;
+  for(let i=total.length-1;i>=0;i--){
+    if(total[i].t.startsWith(todayStr)){ best=i; break; }
+  }
+  return best;
+}
+
+function calcAdjustableNow(cur){
+  // 基于当前各分项计算可调潜能
+  let cap = 0;
+  cap += cur.nio * 0.8;     // 换电站80%可调
+  cap += cur.cnpc * 0.7;    // 充电桩70%可调
+  cap += cur.hp * 0.5;      // 热泵50%可调
+  cap += cur.ac * 0.4;      // 空调40%可调
+  return cap;
+}
+
+// ---- 近7天总负荷 ----
+function renderTotalChart7d(total){
+  const ctx = document.getElementById('chart-total-7d').getContext('2d');
+  const days = 7;
+  const slice = total.slice(-days*96);
+  const labels = slice.map(d=>d.t.slice(5,16));
+  const data = slice.map(d=>d.v);
+  
+  new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'总负荷 (kW)',
+        data,
+        borderColor:'#3b82f6',
+        backgroundColor:'rgba(59,130,246,.06)',
+        fill:true,
+        tension:.3,
+        pointRadius:0,
+        borderWidth:1.5
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>ctx.parsed.y.toFixed(0)+' kW'
+          }
+        }
+      },
+      scales:{
+        x:{
+          grid:{display:false},
+          ticks:{maxTicksLimit:14, font:{size:10}},
+          time:{unit:'day'}
+        },
+        y:{
+          beginAtZero:true,
+          grid:{color:'rgba(0,0,0,.05)'},
+          ticks:{font:{size:11}, callback:v=>v+'kW'}
+        }
+      }
+    }
+  });
+}
+
+// ---- 光伏今日 ----
+function renderPvToday(pvData){
+  const today = getTodayStr();
+  const todayPv = pvData.filter(d=>d.t.startsWith(today));
+  if(todayPv.length===0) return;
+  const labels = todayPv.map(d=>d.t.slice(11,16));
+  const data = todayPv.map(d=>d.v);
+  new Chart(document.getElementById('chart-pv-today'), {
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'光伏出力 (kW)',
+        data,
+        borderColor:'#fb923c',
+        backgroundColor:'rgba(251,146,60,.1)',
+        fill:true,tension:.3,pointRadius:0,borderWidth:1.5
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false},ticks:{maxTicksLimit:12,font:{size:10}}},
+        y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:11}}}
+      }
+    }
+  });
+}
+
+function getTodayStr(){
+  const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// ---- 负荷分解堆叠图 ----
+function renderStackedToday(total){
+  const today = getTodayStr();
+  const dayData = total.filter(d=>d.t.startsWith(today));
+  if(dayData.length===0) return;
+  const labels = dayData.map(d=>d.t.slice(11,16));
+  
+  const datasets = COLORS_ORDER.map(key => ({
+    label: LABELS[key],
+    data: dayData.map(d=>d[key]),
+    backgroundColor: COLORS[key]+'80',
+    borderColor: COLORS[key],
+    borderWidth: 1,
+    fill: true
+  }));
+  
+  new Chart(document.getElementById('chart-stacked'), {
+    type:'bar',
+    data:{labels,datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:12,font:{size:11}}},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              const total = ctx.chart.data.datasets.reduce((s,ds)=>s+ds.data[ctx.dataIndex],0);
+              return ctx.dataset.label+': '+ctx.parsed.y.toFixed(0)+' kW ('+(ctx.parsed.y/total*100).toFixed(1)+'%)';
+            },
+            footer:(items)=>{
+              const total = items[0].chart.data.datasets.reduce((s,ds)=>s+ds.data[items[0].dataIndex],0);
+              return '合计: '+total.toFixed(0)+' kW';
+            }
+          }
+        }
+      },
+      scales:{
+        x:{stacked:true,grid:{display:false},ticks:{font:{size:10},maxTicksLimit:12}},
+        y:{stacked:true,beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:11}}}
+      }
+    }
+  });
+}
+
+// ---- 年用电饼图 ----
+function renderPieAnnual(){
+  const annualData = [
+    {label:'水冷空调',value:150,color:COLORS.ac},
+    {label:'照明/插座/房间',value:150,color:COLORS.light},
+    {label:'蔚来换电站',value:200,color:COLORS.nio},
+    {label:'中石油充电桩',value:100,color:COLORS.cnpc}
+  ];
+  new Chart(document.getElementById('chart-pie-annual'), {
+    type:'doughnut',
+    data:{
+      labels:annualData.map(d=>d.label),
+      datasets:[{
+        data:annualData.map(d=>d.value),
+        backgroundColor:annualData.map(d=>d.color+'CC'),
+        borderColor:'#fff',
+        borderWidth:2
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'right',labels:{boxWidth:12,padding:10,font:{size:11}}},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              return ctx.label+': '+ctx.parsed+'万度 ('+(ctx.parsed/total*100).toFixed(1)+'%)';
+            }
+          }
+        }
+      },
+      cutout:'55%'
+    }
+  });
+}
+
+// ---- 分项统计表 ----
+function renderLoadTable(total){
+  const today = total.filter(d=>d.t.startsWith(getTodayStr()));
+  if(today.length===0) return;
+  
+  let html = `<table><thead><tr><th>分项</th><th>今日用电(kWh)</th><th>今日峰值(kW)</th><th>占比</th></tr></thead><tbody>`;
+  const totalKwh = today.reduce((s,d)=>s+d.v,0)*0.25;
+  
+  for(const key of ['ac','light','nio','cnpc','other']){
+    const vals = today.map(d=>d[key]);
+    const kwh = vals.reduce((s,v)=>s+v,0)*0.25;
+    const pk = Math.max(...vals);
+    html += `<tr><td>${LABELS[key]||key}</td><td>${kwh.toFixed(0)}</td><td>${pk.toFixed(0)}</td><td>${(kwh/totalKwh*100).toFixed(1)}%</td></tr>`;
+  }
+  // 热泵子行
+  const hpVals = today.map(d=>d.hp);
+  const hpKwh = hpVals.reduce((s,v)=>s+v,0)*0.25;
+  html += `<tr style="color:var(--accent4)"><td>└ 空气源热泵(含在照明中)</td><td>${hpKwh.toFixed(0)}</td><td>${Math.max(...hpVals).toFixed(0)}</td><td>${(hpKwh/totalKwh*100).toFixed(1)}%</td></tr>`;
+  
+  // 光伏
+  const pv = DATA.load.pv.filter(d=>d.t.startsWith(getTodayStr()));
+  if(pv.length){
+    const pvKwh = pv.reduce((s,d)=>s+d.v,0)*0.25;
+    html += `<tr style="color:#fb923c"><td>☀️ 光伏(深绿)</td><td>${pvKwh.toFixed(0)}</td><td>${Math.max(...pv.map(d=>d.v)).toFixed(0)}</td><td>-</td></tr>`;
+  }
+  
+  html += `</tbody></table>`;
+  document.getElementById('load-table').innerHTML = html;
+}
+
+// ===== 可调资源 =====
+function renderAdjustableCards(){
+  const adj = DATA.adjustable;
+  if(!adj) return;
+  const html = Object.keys(adj).map(key => {
+    const a = adj[key];
+    const tagColors = {nio:'tag-blue',cnpc:'tag-green',hp:'tag-purple',ac:'tag-orange',pv:'tag-pink'};
+    const iconMap = {nio:'🚗',cnpc:'⛽',hp:'🔥',ac:'❄️',pv:'☀️'};
+    return `<div class="adjustable-item">
+      <div class="title">${iconMap[key]||'🔌'} ${a.name}</div>
+      <div><span class="tag ${tagColors[key]||'tag-blue'}">${a.direction}</span><span class="tag tag-blue">响应${a.response}</span></div>
+      <div class="detail">
+        额定容量：${a.rated_kw||a.rated_kwp||'-'} kW<br>
+        可调范围：${a.min_kw} ~ ${a.max_kw} kW<br>
+        控制方式：${a.control}<br>
+        ${a.desc}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('adjustable-cards').innerHTML = html;
+}
+
+function renderAdjustableProfiles(total){
+  const today = total.filter(d=>d.t.startsWith(getTodayStr()));
+  if(today.length===0) return;
+  const labels = today.map(d=>d.t.slice(11,16));
+  
+  const adjKeys = ['ac','nio','cnpc','hp'];
+  const adjColors = {ac:'#f59e0b',nio:'#fbbf24',cnpc:'#a78bfa',hp:'#f472b6'};
+  const adjLabels = {ac:'空调',nio:'换电站',cnpc:'充电桩',hp:'热泵'};
+  
+  const datasets = adjKeys.map(key => ({
+    label: adjLabels[key],
+    data: today.map(d=>d[key]),
+    borderColor: adjColors[key],
+    backgroundColor: adjColors[key]+'20',
+    fill: true,
+    tension: .3,
+    pointRadius: 0,
+    borderWidth: 1.5
+  }));
+  
+  new Chart(document.getElementById('chart-adjustable-profiles'), {
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:12,font:{size:11}}},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>ctx.dataset.label+': '+ctx.parsed.y.toFixed(0)+' kW'
+          }
+        }
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:10},maxTicksLimit:12}},
+        y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:11}}}
+      }
+    }
+  });
+}
+
+function renderAdjustableSummary(){
+  const adj = DATA.adjustable;
+  if(!adj) return;
+  let totalUp = 0, totalDown = 0;
+  const rows = Object.keys(adj).map(key => {
+    const a = adj[key];
+    totalUp += a.max_kw;
+    totalDown += a.min_kw;
+    return `<tr><td>${a.name}</td><td>${a.rated_kw||a.rated_kwp||'-'}</td><td>${a.min_kw}</td><td>${a.max_kw}</td><td>${a.response}</td><td>${a.direction}</td></tr>`;
+  }).join('');
+  
+  const html = `<table>
+    <thead><tr><th>负荷</th><th>额定(kW)</th><th>最小(kW)</th><th>最大(kW)</th><th>响应速度</th><th>方向</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="font-weight:600;background:var(--bg-input)"><td>合计可调</td><td>-</td><td>${totalDown}</td><td>${totalUp}</td><td></td><td></td></tr></tfoot>
+  </table>`;
+  document.getElementById('adjustable-summary').innerHTML = html;
+}
+
+// ===== 分成计算 =====
+function calcProfit(){
+  const kwh = parseFloat(document.getElementById('profit-kwh').value) || 0;
+  const price = parseFloat(document.getElementById('profit-price').value) || 0;
+  const oprate = parseFloat(document.getElementById('profit-oprate').value) || 0;
+  const risk = parseFloat(document.getElementById('profit-risk').value) || 0;
+  
+  const total = kwh * price;
+  const net = total * (1 - oprate/100 - risk/100);
+  
+  const ratios = DATA.profit.config.default_ratios;
+  const owner = net * ratios[0];
+  const provider = net * ratios[1];
+  const operator = net * ratios[2];
+  
+  // 饼图
+  const ctx = document.getElementById('chart-profit-pie').getContext('2d');
+  if(window._profitChart) window._profitChart.destroy();
+  window._profitChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:DATA.profit.config.labels,
+      datasets:[{
+        data:[owner, provider, operator],
+        backgroundColor:DATA.profit.config.colors,
+        borderWidth:2,
+        borderColor:'#fff'
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      cutout:'55%',
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:12,padding:10,font:{size:11}}},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              return ctx.label+': ¥'+ctx.parsed.toFixed(0)+' ('+(ctx.parsed/total*100).toFixed(1)+'%)';
+            }
+          }
+        }
+      }
+    }
+  });
+  
+  document.getElementById('profit-result').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+      <div style="background:var(--bg-input);padding:10px;border-radius:8px">
+        <div style="color:var(--text-secondary);font-size:11px">总收益</div>
+        <div style="font-size:20px;font-weight:700;color:var(--accent)">¥${total.toFixed(0)}</div>
+      </div>
+      <div style="background:var(--bg-input);padding:10px;border-radius:8px">
+        <div style="color:var(--text-secondary);font-size:11px">净收益（扣除${oprate+risk}%）</div>
+        <div style="font-size:20px;font-weight:700;color:var(--accent2)">¥${net.toFixed(0)}</div>
+      </div>
+      <div style="background:rgba(79,195,247,.1);padding:10px;border-radius:8px">
+        <div style="color:#0284c7;font-size:11px">🏨 酒店业主方</div>
+        <div style="font-size:18px;font-weight:600;color:#12b8ff">¥${owner.toFixed(0)}</div>
+        <div style="font-size:11px;color:var(--text-secondary)">${(ratios[0]*100).toFixed(0)}%</div>
+      </div>
+      <div style="background:rgba(52,211,153,.1);padding:10px;border-radius:8px">
+        <div style="color:#059669;font-size:11px">🔌 可调负荷提供方</div>
+        <div style="font-size:18px;font-weight:600;color:#34d399">¥${provider.toFixed(0)}</div>
+        <div style="font-size:11px;color:var(--text-secondary)">${(ratios[1]*100).toFixed(0)}%</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;background:rgba(251,191,36,.1);padding:10px;border-radius:8px">
+      <div style="color:#b45309;font-size:11px">⚡ 电小团运营方</div>
+      <div style="font-size:18px;font-weight:600;color:#fbbf24">¥${operator.toFixed(0)}</div>
+      <div style="font-size:11px;color:var(--text-secondary)">${(ratios[2]*100).toFixed(0)}%（含运维+技术+市场准入）</div>
+    </div>
+  `;
+}
+
+function renderProfitHistory(){
+  const history = DATA.profit.history;
+  if(!history || !history.length) return;
+  let html = `<table><thead><tr><th>日期</th><th>类型</th><th>单价</th><th>电量(kWh)</th><th>总收益</th><th>业主</th><th>负荷方</th><th>运营方</th></tr></thead><tbody>`;
+  history.forEach(h => {
+    html += `<tr>
+      <td>${h.date}</td>
+      <td><span class="tag ${h.type==='需求响应'?'tag-green':h.type==='现货价差套利'?'tag-orange':'tag-purple'}">${h.type}</span></td>
+      <td>¥${h.unit_price}</td>
+      <td>${h.kwh}</td>
+      <td><strong>¥${h.total_revenue}</strong></td>
+      <td>¥${h.owner}</td>
+      <td>¥${h.load_provider}</td>
+      <td>¥${h.operator}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById('profit-history-table').innerHTML = html;
+}
+
+function renderFormula(){
+  const c = DATA.profit.config;
+  document.getElementById('profit-formula').innerHTML = `
+    <strong>分成公式（三层结构）：</strong><br><br>
+    <strong>第一层：</strong>净收益 = 总收入 × (1 - 运营费率 - 风险准备金率)<br>
+    &nbsp;&nbsp;&nbsp;运营费率建议5-8%，风险准备金率建议3-5%<br><br>
+    <strong>第二层：</strong>默认固定比例分配<br>
+    &nbsp;&nbsp;&nbsp;${c.labels[0]}：${(c.default_ratios[0]*100).toFixed(0)}% — ${c.descriptions[0]}<br>
+    &nbsp;&nbsp;&nbsp;${c.labels[1]}：${(c.default_ratios[1]*100).toFixed(0)}% — ${c.descriptions[1]}<br>
+    &nbsp;&nbsp;&nbsp;${c.labels[2]}：${(c.default_ratios[2]*100).toFixed(0)}% — ${c.descriptions[2]}<br><br>
+    <strong>第三层（成熟期可选）：</strong>贡献度加权<br>
+    &nbsp;&nbsp;&nbsp;业主方 = 15% + 10% × min(响应配合率, 1)<br>
+    &nbsp;&nbsp;&nbsp;负荷方 = 35% + 15% × (该负荷实际调用电量 / 总调用电量)<br>
+    &nbsp;&nbsp;&nbsp;运营方 = 100% - 业主方 - 负荷方
+  `;
+}
+
+// ===== 输入监听 =====
+document.getElementById('profit-kwh').addEventListener('input', calcProfit);
+document.getElementById('profit-price').addEventListener('input', calcProfit);
+document.getElementById('profit-oprate').addEventListener('input', calcProfit);
+document.getElementById('profit-risk').addEventListener('input', calcProfit);
+
+// ===== 启动 =====
+loadData();
+</script>
+</body>
+</html>

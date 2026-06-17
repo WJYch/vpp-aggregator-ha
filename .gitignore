@@ -1,0 +1,4 @@
+.DS_Store
+*.pyc
+__pycache__/
+generate_mock_data.py
