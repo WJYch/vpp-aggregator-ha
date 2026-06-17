@@ -125,6 +125,7 @@ tr:hover td{background:rgba(18,184,255,.03)}
   <button class="tab-btn" data-tab="load">🔌 负荷分解</button>
   <button class="tab-btn" data-tab="adjustable">📡 可调资源</button>
   <button class="tab-btn" data-tab="profit">💰 分成计算</button>
+  <button class="tab-btn" data-tab="bidding">🤝 撮合交易</button>
 </div>
 
 <div class="container">
@@ -248,6 +249,65 @@ tr:hover td{background:rgba(18,184,255,.03)}
   </div>
 </div>
 
+<!-- ==================== 撮合交易 ==================== -->
+<div class="tab-content" id="tab-bidding">
+  <div class="alert alert-info">
+    🤝 电小团下达调控指令后，各可调负荷方按意愿报价竞标，系统自动撮合最优分配方案。高单价时各方更积极，低单价时接受度下降。
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2>🎯 下达调控指令</h2>
+      <div class="row-flex" style="gap:12px">
+        <div style="flex:1;min-width:200px">
+          <div class="form-group">
+            <label>目标调控量（kW）</label>
+            <input type="number" id="bid-target" value="100" min="0" max="1500">
+          </div>
+          <div class="form-group">
+            <label>响应单价（元/kWh）</label>
+            <input type="number" id="bid-price" value="10.0" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label>调控时段</label>
+            <select id="bid-period">
+              <option value="morning">早峰 (8:00-10:00)</option>
+              <option value="noon">午间 (13:00-15:00)</option>
+              <option value="evening" selected>晚峰 (18:00-20:00)</option>
+              <option value="night">夜间 (22:00-6:00)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="runBidding()" style="margin-top:8px">🚀 执行竞标撮合</button>
+          <button class="btn btn-warning" onclick="runAutoBidding()" style="margin-top:8px;margin-left:8px">⚡ 一键智能撮合（模拟）</button>
+        </div>
+        <div style="flex:1;min-width:240px">
+          <div class="stat-card" style="margin-bottom:8px">
+            <div class="value green" id="bid-filled">-</div>
+            <div class="label">已撮合 (kW) / 目标</div>
+          </div>
+          <div class="stat-card">
+            <div class="value orange" id="bid-total-revenue">-</div>
+            <div class="label">本次总收益 (元)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📊 各资源接受度 & 报价</h2>
+      <div id="bidding-chart-area">
+        <p style="color:var(--text-secondary);font-size:13px">点击「执行竞标撮合」查看当前各资源对指令的响应意愿和报价</p>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>🏆 撮合结果</h2>
+    <div id="bidding-result"><p style="color:var(--text-secondary);font-size:13px">尚未执行竞标</p></div>
+  </div>
+  <div class="card">
+    <h2>📋 历史调度记录</h2>
+    <div id="bidding-history-table"></div>
+  </div>
+</div>
+
 </div><!-- container -->
 
 <script>
@@ -307,6 +367,7 @@ function renderAll(){
   renderProfitHistory();
   renderFormula();
   calcProfit(); // 默认计算一次
+  renderBidding();
 }
 
 // ---- 总览统计 ----
@@ -736,6 +797,186 @@ function renderFormula(){
     &nbsp;&nbsp;&nbsp;负荷方 = 35% + 15% × (该负荷实际调用电量 / 总调用电量)<br>
     &nbsp;&nbsp;&nbsp;运营方 = 100% - 业主方 - 负荷方
   `;
+}
+
+// ===== 撮合交易 =====
+const BID_RES_KEYS = ['nio','cnpc','hp','ac','pv'];
+const BID_RES_LABELS = {'nio':'蔚来换电站','cnpc':'中石油充电桩','hp':'空气源热泵','ac':'水冷空调','pv':'光伏'};
+const BID_RES_ICONS = {'nio':'🚗','cnpc':'⛽','hp':'🔥','ac':'❄️','pv':'☀️'};
+const BID_RES_COLORS = {'nio':'#fbbf24','cnpc':'#a78bfa','hp':'#f472b6','ac':'#f59e0b','pv':'#fb923c'};
+const BID_RES_MAX = {'nio':520,'cnpc':380,'hp':130,'ac':400,'pv':50};
+const BID_RES_MIN = {'nio':10,'cnpc':5,'hp':20,'ac':50,'pv':0};
+
+function runBidding(){
+  const target = parseFloat(document.getElementById('bid-target').value) || 0;
+  const price = parseFloat(document.getElementById('bid-price').value) || 0;
+  if(target<=0||price<=0) return;
+  
+  // 获取当前时段的各资源快照
+  const now = new Date();
+  const h = now.getHours();
+  
+  // 计算每个资源的接受度和竞标价
+  const participants = BID_RES_KEYS.map(key => {
+    // 接受度：基础值 + 价格激励
+    let baseWilling = 0.6;
+    if(key==='nio') baseWilling = 0.55;
+    else if(key==='cnpc') baseWilling = 0.45;
+    else if(key==='hp') baseWilling = 0.65;
+    else if(key==='ac') baseWilling = 0.45;
+    else if(key==='pv') baseWilling = 0.30;
+    
+    // 时段影响
+    const hourFactors = {nio:1.0,cnpc:0.9,hp:1.1,ac:0.85,pv:0.3};
+    let hf = hourFactors[key]||1.0;
+    
+    // 价格激励：价格越高越愿意
+    const priceIncentive = Math.min(1.5, Math.max(0.5, price / 3));
+    
+    const willingness = Math.min(0.98, Math.max(0.05, baseWilling * hf * priceIncentive));
+    
+    // 竞标价：每个资源有心理价位
+    let bidFloor = key==='nio'?1.2: key==='cnpc'?1.5: key==='hp'?0.8: key==='ac'?1.0: 2.0;
+    let bidPrice = bidFloor * (0.7 + 0.6 * Math.random());
+    
+    // 如果单价高于心理价就愿意投标
+    const canBid = price >= bidPrice;
+    const adjustMax = BID_RES_MAX[key];
+    const adjustMin = BID_RES_MIN[key];
+    const adjustRange = adjustMax - adjustMin;
+    
+    // 愿意提供的容量 = 可调范围 × 接受度
+    let offerKw = canBid ? Math.round(adjustRange * willingness) : 0;
+    offerKw = Math.max(adjustMin, Math.min(adjustMax, offerKw));
+    
+    return {
+      key, name: BID_RES_LABELS[key], icon: BID_RES_ICONS[key],
+      color: BID_RES_COLORS[key], maxKw: adjustMax, minKw: adjustMin,
+      willingness: Math.round(willingness*100),
+      bidPrice: Math.round(bidPrice*100)/100,
+      canBid, offerKw,
+      revenue: Math.round(offerKw * price * 100)/100
+    };
+  });
+  
+  // 撮合算法：优先低价者得
+  const sorted = [...participants].filter(p=>p.canBid).sort((a,b)=>a.bidPrice-b.bidPrice);
+  let remaining = target;
+  const allocation = [];
+  
+  for(const p of sorted){
+    if(remaining<=0) break;
+    const alloc = Math.min(remaining, p.offerKw);
+    if(alloc>0){
+      allocation.push({...p, allocatedKw: alloc});
+      remaining -= alloc;
+    }
+  }
+  
+  const filled = target - remaining;
+  const filledPct = Math.round(filled/target*100);
+  
+  // 显示撮合结果
+  document.getElementById('bid-filled').textContent = filled + ' / ' + target + ' kW ('+filledPct+'%)';
+  document.getElementById('bid-filled').style.color = filledPct>=80?'#34d399':filledPct>=50?'#fbbf24':'#ef4444';
+  document.getElementById('bid-total-revenue').textContent = '¥' + Math.round(allocation.reduce((s,p)=>s+p.allocatedKw*price,0));
+  
+  // 结果表格
+  let html = `<table><thead><tr><th>资源</th><th>接受度</th><th>报价(元)</th><th>可调(kW)</th><th>撮合(kW)</th><th>收益(元)</th></tr></thead><tbody>`;
+  for(const p of participants){
+    const alloc = allocation.find(a=>a.key===p.key);
+    const akw = alloc?alloc.allocatedKw:0;
+    const rev = alloc?Math.round(alloc.allocatedKw*price*100)/100:0;
+    html += `<tr style="${p.canBid?'':'opacity:0.4'}">
+      <td>${p.icon} ${p.name}</td>
+      <td><span class="tag ${p.willingness>60?'tag-green':p.willingness>30?'tag-orange':'tag-pink'}">${p.willingness}%</span></td>
+      <td>¥${p.bidPrice}</td>
+      <td>${p.offerKw}</td>
+      <td><strong>${akw}</strong></td>
+      <td>¥${rev}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  
+  if(remaining>0){
+    html += `<div class="alert alert-warning">⚠️ 尚有 ${Math.round(remaining)}kW 未撮合（报价不足或接受度不够），建议提高单价或降低目标</div>`;
+  }
+  document.getElementById('bidding-result').innerHTML = html;
+  
+  // 绘制接受度图
+  const ctx = document.createElement('canvas');
+  document.getElementById('bidding-chart-area').innerHTML = '';
+  document.getElementById('bidding-chart-area').appendChild(ctx);
+  ctx.style.width='100%'; ctx.style.height='240px';
+  
+  if(window._bidChart)window._bidChart.destroy();
+  window._bidChart = new Chart(ctx.getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: participants.map(p=>p.icon+' '+p.name),
+      datasets:[
+        {label:'接受度 (%)',data:participants.map(p=>p.willingness),backgroundColor:participants.map(p=>p.color+'80'),borderColor:participants.map(p=>p.color),borderWidth:1,yAxisID:'y'},
+        {label:'报价 (元/kWh)',data:participants.map(p=>p.bidPrice),type:'line',borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,.15)',pointRadius:6,pointBackgroundColor:allocation.map(a=>'#34d399'),borderWidth:2,tension:.3,yAxisID:'y1'}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{boxWidth:12,padding:12,font:{size:11}}},
+        tooltip:{
+          callbacks:{
+            label:(ctx)=>{
+              if(ctx.dataset.label==='接受度 (%)') return '接受度: '+ctx.parsed.y+'%';
+              return '报价: ¥'+ctx.parsed.y.toFixed(2);
+            }
+          }
+        }
+      },
+      scales:{
+        y:{beginAtZero:true,max:100,grid:{color:'rgba(0,0,0,.05)'},title:{display:true,text:'接受度 (%)'}},
+        y1:{position:'right',beginAtZero:true,grid:{display:false},title:{display:true,text:'报价 (元/kWh)'}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+}
+
+function runAutoBidding(){
+  // 一键模拟：随机生成撮合场景
+  const targets = [50,80,100,120,150,200,250];
+  const prices = [0.8,1.5,2.5,5.0,8.0,10.0,15.0];
+  const target = targets[Math.floor(Math.random()*targets.length)];
+  const price = prices[Math.floor(Math.random()*prices.length)];
+  document.getElementById('bid-target').value = target;
+  document.getElementById('bid-price').value = price;
+  runBidding();
+}
+
+function renderBiddingHistory(){
+  const history = DATA.bidding?.dispatch_history;
+  if(!history||!history.length) return;
+  let html = `<table><thead><tr><th>日期</th><th>时段</th><th>类型</th><th>目标(kW)</th><th>已撮合</th><th>单价(元)</th><th>参与者</th><th>总收益</th></tr></thead><tbody>`;
+  history.forEach(h => {
+    const participants = (h.participants||[]).map(p=>`${p.resource}:${p.allocated_kw}kW`).join(', ');
+    html += `<tr>
+      <td>${h.date}</td>
+      <td>${h.time}</td>
+      <td><span class="tag ${h.type==='需求响应'?'tag-green':h.type==='现货套利'?'tag-orange':'tag-purple'}">${h.type}</span></td>
+      <td>${h.target_kw}</td>
+      <td>${h.filled_kw}</td>
+      <td>¥${h.price_yuan}</td>
+      <td style="font-size:11px">${participants||'-'}</td>
+      <td><strong>¥${h.total_revenue}</strong></td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById('bidding-history-table').innerHTML = html;
+}
+
+// 在renderAll中增加
+function renderBidding(){
+  renderBiddingHistory();
 }
 
 // ===== 输入监听 =====
